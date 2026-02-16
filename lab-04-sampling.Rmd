@@ -1,0 +1,367 @@
+---
+title: "Lab 04 — Sampling from Time Series"
+author: "EAES 480 — Modern Statistics in Earth & Environmental Science"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    highlight: tango
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+## What is AmeriFlux?
+
+**AmeriFlux** is a network of **eddy covariance** flux-tower sites that measure exchanges of **carbon (CO₂), water, and energy** between ecosystems and the atmosphere, with standardized data products shared for research and education.
+
+In this lab, you will use a simplified AmeriFlux-style dataset from the **US-AMS site at Argonne National Laboratory (near Chicago)**. The measurements are at **30-minute resolution** over **2023**, and show strong **seasonality** and **day–night cycles**.
+
+**Key idea for this lab:** treat the full 2023 time series as the **population**, then practice sampling strategies to estimate population parameters.
+
+References for context:
+- AmeriFlux overview: https://ameriflux.lbl.gov/about/about-ameriflux/
+- US-AMS site page: https://ameriflux.lbl.gov/sites/siteinfo/US-AMS
+
+---
+
+# Learning goals
+
+By the end of this lab, you should be able to:
+
+- Define a **population** and a **sample** for an EAES time-series dataset
+- Compute population **parameters** (mean, SD) and compare to sample **estimates**
+- Visualize distributions and identify **latent grouping variables** (month, day/night)
+- Implement **simple random sampling** and **stratified sampling**
+- Use `set.seed()` to make sampling reproducible
+
+---
+
+# Data
+
+## Load and inspect
+
+```{r load_data, echo=TRUE, eval=FALSE}
+df <- read_csv("data/us-ams-simple.csv") %>%
+  clean_names() %>% filter(year_local == 2023)
+
+glimpse(df)
+```
+
+**CHECK:** You should see columns like `year_local`, `doy`, `daytime`, and flux/biomet variables (e.g., `gpp`, `fc`, `le`, `ta`).
+
+---
+
+## Create a date and month column from DOY
+
+This dataset uses **Year + Day-of-Year (DOY)**. Month must be derived from a calendar date.
+
+```{r derive_time, echo=TRUE, eval=FALSE}
+df <- df %>%
+  mutate(
+    # TODO: create a Date column from year_local and doy
+    # HINT: Jan 1 is DOY = 1, so use (doy - 1) with origin = "YYYY-01-01"
+    date = as.Date(___ - 1, origin = paste0(___, "-01-01")),
+
+    # TODO: create a month column (numeric 1–12 or labeled months)
+    month = month(___, label = TRUE, abbr = TRUE),
+
+    # TODO: make a day/night label using daytime (0/1)
+    day_night = if_else(daytime == 1, "Day", "Night")
+  )
+
+count(df, month)
+count(df, day_night)
+```
+
+---
+
+# Choose a response variable
+
+You will analyze **one response variable** throughout the lab. This could be a CO₂ flux metric or a meteorological variable.
+
+Examples you can choose from (depending on what you see in the dataset):
+- CO₂ / carbon: `gpp`, `reco`, `fc`
+- Energy: `le`
+- Meteorology: `ta`, `ts`, `swc`
+
+```{r choose_response, echo=TRUE, eval=FALSE}
+# TODO: choose ONE response variable (a column name as a string)
+response_var <- "gpp"   # replace "gpp" with your choice, e.g. "fc" or "le" or "ta"
+
+# CHECK: print a quick summary
+df %>% summarise(
+  n = n(),
+  n_missing = sum(is.na(____)),
+  mean = mean(____, na.rm = TRUE),
+  sd = sd(____, na.rm = TRUE)
+)
+```
+
+**Prompt (2–3 sentences):** Why did you choose this response variable? What do you expect its seasonality/day–night pattern to be?
+
+> *Write your answer here.*
+
+---
+
+# Section 1 — Data dictionary (conceptual)
+
+Students will populate the data dictionary using:
+https://ameriflux.lbl.gov/data/aboutdata/data-variables/
+
+Fill in at least **5 variables** from this dataset:
+
+| Variable | Units | Description | Expected sign/seasonality? |
+|----------|-------|-------------|----------------------------|
+|          |       |             |                            |
+|          |       |             |                            |
+|          |       |             |                            |
+|          |       |             |                            |
+|          |       |             |                            |
+
+---
+
+# Section 2 — Visualizing the population
+
+Remember: for this lab, the **population** is the entire 2023 half-hourly time series.
+
+## 2.1 Time series view
+
+```{r plot_time_series, echo=TRUE, eval=FALSE}
+# GOAL: Visualize seasonality over the year.
+# TODO: pick a y aesthetic using response_var.
+
+df %>%
+  ggplot(aes(x = date, y = ____)) +
+  geom_line(alpha = 0.25) +
+  theme_classic(base_size = 18) +
+  labs(
+    x = NULL,
+    y = response_var,
+    title = "Population time series (2023)"
+  )
+```
+
+**Prompt (2–3 sentences):** What major patterns do you see? (Seasonal cycle? Daily cycle? Outliers?)
+
+> *Write your answer here.*
+
+---
+
+## 2.2 Population distribution (histogram + density)
+
+```{r pop_distribution, echo=TRUE, eval=FALSE}
+# GOAL: See the overall distribution of the population.
+# TODO: choose an appropriate number of bins (start with ~50).
+
+ggplot(df, aes(x = ____)) +
+  geom_histogram(bins = ___, alpha = 0.7) +
+  theme_classic(base_size = 18) +
+  labs(x = response_var, y = "Count", title = "Population distribution (histogram)")
+
+ggplot(df, aes(x = ____)) +
+  geom_density(alpha = 0.7) +
+  theme_classic(base_size = 18) +
+  labs(x = response_var, y = "Density", title = "Population distribution (density)")
+```
+
+**Prompt:** Describe shape (skew, modality), center, and spread.
+
+> *Write your answer here.*
+
+---
+
+## 2.3 Do latent groups explain variability? (month, day/night)
+
+### By month
+
+```{r pop_by_month, echo=TRUE, eval=FALSE}
+# TODO: make month appear in a sensible order (it already is an ordered factor if label=TRUE)
+df %>%
+  ggplot(aes(x = month, y = ____)) +
+  geom_boxplot(outlier.alpha = 0.25) +
+  theme_classic(base_size = 18) +
+  labs(x = NULL, y = response_var, title = "Population by month")
+```
+
+### By day/night
+
+```{r pop_by_daynight, echo=TRUE, eval=FALSE}
+df %>%
+  ggplot(aes(x = day_night, y = ____)) +
+  geom_boxplot(outlier.alpha = 0.25) +
+  theme_classic(base_size = 18) +
+  labs(x = NULL, y = response_var, title = "Population by day vs night")
+```
+
+**Prompt (3–4 sentences):** Which grouping variable (month or day/night) seems to explain more variability in your response? Why?
+
+> *Write your answer here.*
+
+---
+
+# Section 3 — Population parameters (truth)
+
+Compute the population mean and SD for your chosen response variable.
+
+```{r population_params, echo=TRUE, eval=FALSE}
+pop_mean <- mean(df____, na.rm = TRUE)
+pop_sd   <- sd(df____, na.rm = TRUE)
+
+tibble(
+  response_var = response_var,
+  population_mean = pop_mean,
+  population_sd = pop_sd
+)
+```
+
+---
+
+# Section 4 — Simple random sampling (SRS)
+
+## 4.1 One random sample
+
+```{r one_sample, echo=TRUE, eval=FALSE}
+set.seed(480)
+
+# TODO: choose a sample size (e.g., 200, 500, 1000)
+n_samp <- ___
+
+samp <- df %>%
+  slice_sample(n = n_samp)
+
+samp_mean <- mean(samp____, na.rm = TRUE)
+samp_sd   <- sd(samp____, na.rm = TRUE)
+
+tibble(
+  n_samp = n_samp,
+  sample_mean = samp_mean,
+  sample_sd = samp_sd,
+  pop_mean = pop_mean,
+  pop_sd = pop_sd
+)
+```
+
+**Prompt (2–3 sentences):** How close is your one-sample estimate to the population mean/SD? Is the difference surprising?
+
+> *Write your answer here.*
+
+---
+
+## 4.2 Sampling variability: many samples → many means
+
+```{r sampling_distribution, echo=TRUE, eval=FALSE}
+set.seed(480)
+
+reps <- ___   # TODO: choose number of replicates (e.g., 500 or 1000)
+
+means <- replicate(
+  reps,
+  df %>%
+    slice_sample(n = n_samp) %>%
+    summarise(m = mean(____, na.rm = TRUE)) %>%
+    pull(m)
+)
+
+ggplot(tibble(mean_est = means), aes(mean_est)) +
+  geom_histogram(bins = 40, alpha = 0.8) +
+  geom_vline(xintercept = pop_mean, linetype = "dashed", linewidth = 1.1) +
+  theme_classic(base_size = 18) +
+  labs(
+    x = paste0("Sample mean of ", response_var),
+    y = "Count",
+    title = "Sampling distribution of the mean (SRS)",
+    subtitle = "Dashed line = population mean"
+  )
+```
+
+**Prompt (2–3 sentences):** Is the sampling distribution centered on the population mean? What happens if you increase `n_samp`?
+
+> *Write your answer here.*
+
+---
+
+# Section 5 — Stratified sampling
+
+Here you’ll test whether stratification helps when the population has structure.
+
+## 5.1 Stratify by month
+
+```{r strat_by_month, echo=TRUE, eval=FALSE}
+set.seed(480)
+
+# GOAL: sample within each month to ensure seasonal representation.
+# TODO: choose n_per_month so total sample size is reasonable (e.g., 12 * 20 = 240)
+n_per_month <- ___
+
+samp_strat <- df %>%
+  group_by(month) %>%
+  slice_sample(n = n_per_month) %>%
+  ungroup()
+
+strat_mean <- mean(samp_strat____, na.rm = TRUE)
+strat_sd   <- sd(samp_strat____, na.rm = TRUE)
+
+tibble(
+  n_per_month = n_per_month,
+  total_n = nrow(samp_strat),
+  strat_mean = strat_mean,
+  strat_sd = strat_sd,
+  pop_mean = pop_mean,
+  pop_sd = pop_sd
+)
+```
+
+---
+
+## 5.2 Compare strategies (SRS vs stratified)
+
+```{r compare_sampling, echo=TRUE, eval=FALSE}
+tibble(
+  strategy = c("Population", "SRS", "Stratified by month"),
+  mean = c(pop_mean, samp_mean, strat_mean),
+  sd   = c(pop_sd,   samp_sd,   strat_sd)
+)
+```
+
+**Prompt (3–4 sentences):** Which strategy better approximated the population mean and SD for your response variable? Why might stratification help (or not) here?
+
+> *Write your answer here.*
+
+---
+
+# Section 6 — Conceptual reflection
+
+Answer in **4–6 sentences**:
+
+- Why does seasonality matter for sampling?
+- What happens if sampling ignores latent grouping variables?
+- In EAES field studies, when is stratification essential?
+- What is one trade-off of stratified sampling?
+
+> *Write your answer here.*
+
+---
+
+# Part II (Placeholder — to be added)
+
+In the next lab section, we will extend this to **sampling methods in EAES** (e.g., systematic sampling, cluster sampling, sampling frames, and bias) and connect sampling to **hypothesis testing**.
+
+> *Instructor will add this section later. Do not delete this header.*
