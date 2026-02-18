@@ -12,7 +12,7 @@ output:
     code_folding: hide
     df_print: paged
 editor_options:
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
@@ -58,7 +58,7 @@ By the end of this lab, you should be able to:
 
 ## Load and inspect
 
-```{r load_data, echo=TRUE, eval=FALSE}
+```{r load_data, echo=TRUE, eval=TRUE}
 df <- read_csv("data/us-ams-simple.csv") %>%
   clean_names() %>% filter(year_local == 2023)
 
@@ -78,14 +78,17 @@ df <- df %>%
   mutate(
     # TODO: create a Date column from year_local and doy
     # HINT: Jan 1 is DOY = 1, so use (doy - 1) with origin = "YYYY-01-01"
-    date = as.Date(___ - 1, origin = paste0(___, "-01-01")),
+    date = as.Date(doy - 1, origin = paste0(2023, "-01-01", na.rm = TRUE)),
 
     # TODO: create a month column (numeric 1–12 or labeled months)
-    month = month(___, label = TRUE, abbr = TRUE),
+    month = month(date, label = TRUE, abbr = TRUE),
 
     # TODO: make a day/night label using daytime (0/1)
-    day_night = if_else(daytime == 1, "Day", "Night")
+    day_night = case_when(daytime == 1 ~ "Day", daytime == 0 ~ "Night", daytime == -9999 ~ "NA"), 
   )
+
+df$doy[df$doy == -9999] <- NA
+df$daytime[df$daytime == -9999] <- NA
 
 count(df, month)
 count(df, day_night)
@@ -102,22 +105,22 @@ Examples you can choose from (depending on what you see in the dataset):
 - Energy: `le`
 - Meteorology: `ta`, `ts`, `swc`
 
-```{r choose_response, echo=TRUE, eval=FALSE}
+```{r choose_response, echo=TRUE, eval=TRUE}
 # TODO: choose ONE response variable (a column name as a string)
-response_var <- "gpp"   # replace "gpp" with your choice, e.g. "fc" or "le" or "ta"
+response_var <- "reco"   # replace "gpp" with your choice, e.g. "fc" or "le" or "ta"
 
 # CHECK: print a quick summary
 df %>% summarise(
   n = n(),
-  n_missing = sum(is.na(____)),
-  mean = mean(____, na.rm = TRUE),
-  sd = sd(____, na.rm = TRUE)
+  n_missing = sum(is.na(reco)),
+  mean = mean(reco, na.rm = TRUE),
+  sd = sd(reco, na.rm = TRUE)
 )
 ```
 
 **Prompt (2–3 sentences):** Why did you choose this response variable? What do you expect its seasonality/day–night pattern to be?
 
-> *Write your answer here.*
+> *I chose this variable because I'm a plant scientist and it's most interesting to me. I expect ecosystem respiration to increase overnight and decrease during the day.*
 
 ---
 
@@ -128,13 +131,13 @@ https://ameriflux.lbl.gov/data/aboutdata/data-variables/
 
 Fill in at least **5 variables** from this dataset:
 
-| Variable | Units | Description | Expected sign/seasonality? |
-|----------|-------|-------------|----------------------------|
-|          |       |             |                            |
-|          |       |             |                            |
-|          |       |             |                            |
-|          |       |             |                            |
-|          |       |             |                            |
+|  Variable |   Units   | Description  |  Expected sign/seasonality?   |
+|-----------|-----------|--------------|-------------------------------|
+|    fc     |µmolCO2/m2s|  CO2 flux    |    winter (+), summer (-)     |
+|    le     |    W/m2   |  heat flux   | higher in winter (energy out) |
+|    ta     |    Cº     |  air temp.   | always (+); higher in summer  |
+|   reco    |µmolCO2/m2s| ecosys. resp.|    winter (+), summer (-)     |
+|    ts     |    Cº     |  soil temp.  | always (+); higher in summer  |
 
 ---
 
@@ -149,34 +152,34 @@ Remember: for this lab, the **population** is the entire 2023 half-hourly time s
 # TODO: pick a y aesthetic using response_var.
 
 df %>%
-  ggplot(aes(x = date, y = ____)) +
-  geom_line(alpha = 0.25) +
+  ggplot(aes(x = date, y = reco)) +
+  geom_line(alpha = 0.25, na.rm = TRUE, color = 'red') +
   theme_classic(base_size = 18) +
   labs(
     x = NULL,
-    y = response_var,
+    y = "Ecosystem Respiration",
     title = "Population time series (2023)"
   )
 ```
 
 **Prompt (2–3 sentences):** What major patterns do you see? (Seasonal cycle? Daily cycle? Outliers?)
 
-> *Write your answer here.*
+> *I see both a daily pattern and a seasonal pattern. The 'blurriness' or 'wiggle' in the line is the daily trend and the increase during the summer seasons is the seasonal pattern.*
 
 ---
 
 ## 2.2 Population distribution (histogram + density)
 
-```{r pop_distribution, echo=TRUE, eval=FALSE}
+```{r pop_distribution, echo=TRUE, eval=TRUE}
 # GOAL: See the overall distribution of the population.
 # TODO: choose an appropriate number of bins (start with ~50).
 
-ggplot(df, aes(x = ____)) +
-  geom_histogram(bins = ___, alpha = 0.7) +
+ggplot(df, aes(x = reco)) +
+  geom_histogram(bins = 50, alpha = 0.7) +
   theme_classic(base_size = 18) +
   labs(x = response_var, y = "Count", title = "Population distribution (histogram)")
 
-ggplot(df, aes(x = ____)) +
+ggplot(df, aes(x = reco)) +
   geom_density(alpha = 0.7) +
   theme_classic(base_size = 18) +
   labs(x = response_var, y = "Density", title = "Population distribution (density)")
@@ -184,7 +187,7 @@ ggplot(df, aes(x = ____)) +
 
 **Prompt:** Describe shape (skew, modality), center, and spread.
 
-> *Write your answer here.*
+> *It is left skewed and bimodal. The first peak is higher than the second. The mode will likely be a lot smaller than the median.*
 
 ---
 
@@ -194,9 +197,13 @@ ggplot(df, aes(x = ____)) +
 
 ```{r pop_by_month, echo=TRUE, eval=FALSE}
 # TODO: make month appear in a sensible order (it already is an ordered factor if label=TRUE)
+
+#df$month_month <- month(df$date)
+
 df %>%
-  ggplot(aes(x = month, y = ____)) +
-  geom_boxplot(outlier.alpha = 0.25) +
+  filter(!is.na(day_night)) %>%
+  ggplot(aes(x = month, y = reco, fill = month), na.rm = TRUE) +
+  geom_boxplot(outlier.alpha = 0.25, na.rm = TRUE) +
   theme_classic(base_size = 18) +
   labs(x = NULL, y = response_var, title = "Population by month")
 ```
@@ -205,15 +212,16 @@ df %>%
 
 ```{r pop_by_daynight, echo=TRUE, eval=FALSE}
 df %>%
-  ggplot(aes(x = day_night, y = ____)) +
-  geom_boxplot(outlier.alpha = 0.25) +
+  filter(!is.na(day_night)) %>%
+  ggplot(aes(x = day_night, y = reco)) +
+  geom_boxplot(outlier.alpha = 0.25, na.rm = TRUE) +
   theme_classic(base_size = 18) +
   labs(x = NULL, y = response_var, title = "Population by day vs night")
 ```
 
 **Prompt (3–4 sentences):** Which grouping variable (month or day/night) seems to explain more variability in your response? Why?
 
-> *Write your answer here.*
+> *The month variable seems to explain more variability. This makes sense - there's more variation between the time that plants are most productive and fully senesced as compared to within a 24 hour cycle, even considering time of day.*
 
 ---
 
@@ -222,8 +230,8 @@ df %>%
 Compute the population mean and SD for your chosen response variable.
 
 ```{r population_params, echo=TRUE, eval=FALSE}
-pop_mean <- mean(df____, na.rm = TRUE)
-pop_sd   <- sd(df____, na.rm = TRUE)
+pop_mean <- mean(df$reco, na.rm = TRUE)
+pop_sd   <- sd(df$reco, na.rm = TRUE)
 
 tibble(
   response_var = response_var,
@@ -242,13 +250,13 @@ tibble(
 set.seed(480)
 
 # TODO: choose a sample size (e.g., 200, 500, 1000)
-n_samp <- ___
+n_samp <- 500
 
 samp <- df %>%
   slice_sample(n = n_samp)
 
-samp_mean <- mean(samp____, na.rm = TRUE)
-samp_sd   <- sd(samp____, na.rm = TRUE)
+samp_mean <- mean(samp$reco, na.rm = TRUE)
+samp_sd   <- sd(samp$reco, na.rm = TRUE)
 
 tibble(
   n_samp = n_samp,
@@ -261,7 +269,7 @@ tibble(
 
 **Prompt (2–3 sentences):** How close is your one-sample estimate to the population mean/SD? Is the difference surprising?
 
-> *Write your answer here.*
+> *The one sample estimates are pretty close -- one is off by ~2% and the other by ~4%. I'm surprised that the means and sds are so close. I ran it again with n_samp = 5, and the variance was greater, but still surprisingly small. *
 
 ---
 
