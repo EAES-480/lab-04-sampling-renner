@@ -15,6 +15,8 @@ editor_options:
   chunk_output_type: inline
 ---
 
+> GM GRADE 9.75/10 - Good effort with solid writing and thoughtful mechanistic comments in several places (especially the reflection and Part II). However, there are some issue: an empty choose-response prompt, and some interpretive inaccuracies.
+
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
 library(tidyverse)
 library(lubridate)
@@ -191,6 +193,8 @@ ggplot(df, aes(x = reco)) +
 **Prompt:** Describe shape (skew, modality), center, and spread.
 
 > *It is left skewed and bimodal. The first peak is higher than the second. The mode will likely be a lot smaller than the median.*
+
+> GM: -0.25 RECO is right-skewed (many low/near-zero values with a tail of higher positive values), not left-skewed.
 
 ---
 
@@ -580,6 +584,9 @@ Explain *why* in terms of (i) seasonal/diurnal structure and (ii) dependence/aut
 If you were designing a real EAES study with limited field days, what hybrid strategy would you propose (e.g., stratified + clustered)?
 
 > *The quasi-continuous is best. This makes sense - quasi-continuous can account best for seasonal/diurnal structure because it monitors nearly continuously. It also doesn't create temporal autocorrelation like clustering. If I had to choose a different method, I would choose SRS and systematic since they have the most similar mean and sd. *
+
+
+> GM: Good reasoning — quasi-continuous performed best in your run because it captures both seasonal and diurnal structure effectively.
 
 ---
 
